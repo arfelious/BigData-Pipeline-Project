@@ -1,0 +1,10 @@
+[project]
+name = "bigdata-pipeline-project"
+version = "0.1.0"
+description = "Big Data Pipeline Project"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "pyspark==3.3.0",
+    "kaggle>=1.6.0",
+]

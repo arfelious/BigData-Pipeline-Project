@@ -41,6 +41,8 @@ services:
     restart: unless-stopped
     ports:
       - "8088:8088"
+    volumes:
+      - ./superset:/app/pythonpath
     environment:
       DATABASE_URL: "postgresql+psycopg2://superset:superset_password@superset-db:5432/superset"
       REDIS_URL: "redis://superset-redis:6379/0"
