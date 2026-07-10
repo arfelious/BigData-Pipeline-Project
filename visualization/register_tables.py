@@ -43,7 +43,7 @@ SUPERSET_PASS = os.environ.get("SUPERSET_PASS", "admin")
 THRIFT_HOST        = os.environ.get("THRIFT_HOST",       "spark-thriftserver")
 THRIFT_PORT        = int(os.environ.get("THRIFT_PORT", "10000"))
 
-HDFS_BASE     = os.environ.get("HDFS_BASE",     "hdfs://namenode:9000/olist")
+HDFS_BASE     = os.environ.get("HDFS_BASE",     "hdfs://namenode:9000/silver")
 
 DB_NAME = "Olist Spark (HDFS)"
 
@@ -57,6 +57,17 @@ OLIST_TABLES = [
     "olist_products_dataset",
     "olist_sellers_dataset",
     "product_category_name_translation",
+]
+
+GOLD_TABLES = [
+    "dim_customers",
+    "dim_products",
+    "dim_sellers",
+    "dim_date",
+    "fact_orders",
+    "fact_order_items",
+    "fact_order_payments",
+    "fact_order_reviews",
 ]
 
 # Helpers
@@ -77,14 +88,14 @@ def wait_for_superset(timeout = 120):
     sys.exit(1)
 
 
-def create_hive_tables():
+def create_hive_tables(tables_to_register, base_path):
     """
-    Register every Olist Parquet path in the Hive metastore via the Spark ThriftServer.
+    Register every Parquet path in the Hive metastore via the Spark ThriftServer.
     """
     import subprocess
     import shutil
 
-    print(f"\nRegistering Hive tables via ThriftServer at {THRIFT_HOST}:{THRIFT_PORT} …")
+    print(f"\nRegistering Hive tables from {base_path} via ThriftServer at {THRIFT_HOST}:{THRIFT_PORT} …")
 
     # Build a self-contained Python snippet to run inside the superset container
     lines = [
@@ -92,8 +103,8 @@ def create_hive_tables():
         f"conn = hive.connect(host='{THRIFT_HOST}', port={THRIFT_PORT}, auth='NONE', database='default')",
         "cur = conn.cursor()",
     ]
-    for table in OLIST_TABLES:
-        location = f"{HDFS_BASE}/{table}"
+    for table in tables_to_register:
+        location = f"{base_path}/{table}"
         drop_ddl = f"DROP TABLE IF EXISTS `{table}`"
         ddl = f"CREATE TABLE IF NOT EXISTS `{table}` USING PARQUET LOCATION '{location}'"
         lines.append(f"cur.execute(\"{drop_ddl}\")")
@@ -230,10 +241,16 @@ def register_dataset(session, db_id, table_name):
 
 
 def main():
-    wait_for_superset()
+    target = "all"
+    if len(sys.argv) > 1:
+        arg = sys.argv[1].lower()
+        if arg in ["silver", "gold", "all"]:
+            target = arg
+        else:
+            print(f"Unknown target '{arg}'. Usage: python register_tables.py [silver|gold|all]")
+            sys.exit(1)
 
-    # 1. Register Parquet paths in Hive metastore via ThriftServer
-    create_hive_tables()
+    wait_for_superset()
 
     session = requests.Session()
 
@@ -252,10 +269,21 @@ def main():
     # 4. Create or find the Spark database connection in Superset
     db_id = create_database(session)
 
-    # 5. Register every Olist table as a Superset Dataset
-    print(f"\nRegistering {len(OLIST_TABLES)} datasets in Superset …")
-    for table in OLIST_TABLES:
-        register_dataset(session, db_id, table)
+    # Resolve jobs to run
+    jobs = []
+    if target in ["silver", "all"]:
+        jobs.append((OLIST_TABLES, "hdfs://namenode:9000/silver"))
+    if target in ["gold", "all"]:
+        jobs.append((GOLD_TABLES, "hdfs://namenode:9000/gold"))
+
+    for tables, base_path in jobs:
+        # Register in Hive metastore
+        create_hive_tables(tables, base_path)
+        
+        # Register in Superset
+        print(f"\nRegistering {len(tables)} datasets from {base_path} in Superset …")
+        for table in tables:
+            register_dataset(session, db_id, table)
 
     print(f"\nDone!")
 
