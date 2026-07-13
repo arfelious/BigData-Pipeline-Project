@@ -1,9 +1,7 @@
 import os
 import sys
-import datetime
 from pyspark.sql import SparkSession
 import pyspark.sql.functions as F
-import pyspark.sql.types as T
 
 def main():
     print("Initializing Spark Session for Gold Transformation...")
@@ -11,11 +9,12 @@ def main():
         .appName("Olist-Gold-Transformation") \
         .master(os.environ.get("SPARK_MASTER", "spark://spark-master:7077")) \
         .config("spark.hadoop.fs.defaultFS", "hdfs://namenode:9000") \
+        .config("spark.hadoop.hive.metastore.uris", "thrift://hive-metastore:9083") \
+        .enableHiveSupport() \
         .getOrCreate()
 
     print("Spark Session created successfully.")
 
-    silver_base = "hdfs://namenode:9000/silver"
     gold_base = "hdfs://namenode:9000/gold"
 
     print("\n" + "="*60)
@@ -23,15 +22,18 @@ def main():
     print("="*60)
 
     try:
-        # Load necessary Silver tables
-        print("\nLoading Silver datasets...")
-        customers_df = spark.read.parquet(f"{silver_base}/olist_customers_dataset")
-        products_df = spark.read.parquet(f"{silver_base}/olist_products_dataset")
-        sellers_df = spark.read.parquet(f"{silver_base}/olist_sellers_dataset")
-        orders_df = spark.read.parquet(f"{silver_base}/olist_orders_dataset")
-        order_items_df = spark.read.parquet(f"{silver_base}/olist_order_items_dataset")
-        payments_df = spark.read.parquet(f"{silver_base}/olist_order_payments_dataset")
-        reviews_df = spark.read.parquet(f"{silver_base}/olist_order_reviews_dataset")
+        # Load necessary Silver tables from the metastore catalog
+        print("\nLoading Silver datasets from Hive Metastore...")
+        customers_df = spark.read.table("default_silver.silver_customers")
+        products_df = spark.read.table("default_silver.silver_products")
+        sellers_df = spark.read.table("default_silver.silver_sellers")
+        orders_df = spark.read.table("default_silver.silver_orders")
+        order_items_df = spark.read.table("default_silver.silver_order_items")
+        payments_df = spark.read.table("default_silver.silver_order_payments")
+        reviews_df = spark.read.table("default_silver.silver_order_reviews")
+
+        # Ensure database exists
+        spark.sql("CREATE DATABASE IF NOT EXISTS default_gold")
 
         # -------------------------------------------------------------
         # DIMENSIONS
@@ -49,8 +51,7 @@ def main():
 
         # 2. dim_products
         print("Building dim_products...")
-        # Get translations if available (should be in product translation or joined already in silver)
-        # Silver product table has already joined english translations, let's select appropriate fields
+        # Silver product table has already joined english translations
         dim_products = products_df.select(
             "product_id",
             "product_category_name",
@@ -148,9 +149,6 @@ def main():
             "review_creation_date"
         )
 
-        # -------------------------------------------------------------
-        # WRITE TO GOLD LAYER HDFS
-        # -------------------------------------------------------------
         gold_tables = {
             "dim_customers": dim_customers,
             "dim_products": dim_products,
@@ -166,8 +164,10 @@ def main():
         for table_name, df in gold_tables.items():
             path = f"{gold_base}/{table_name}"
             print(f"  Writing {table_name} to {path}...")
-            df.write.mode("overwrite").parquet(path)
-            print(f"  Successfully wrote {table_name} ({df.count()} rows).")
+            df.write.mode("overwrite") \
+                .option("path", path) \
+                .saveAsTable(f"default_gold.{table_name}")
+            print(f"  Successfully wrote {table_name}.")
 
         print("\n" + "="*60)
         print("GOLD TRANSFORMATIONS (STAR SCHEMA) COMPLETE")

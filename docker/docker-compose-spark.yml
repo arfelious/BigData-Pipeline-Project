@@ -40,7 +40,13 @@ services:
     networks:
       - bigdata-net
 
-  # ThriftServer runs in local mode — no worker needed, always gets resources
+  # ThriftServer connects to the external Hive Metastore (hive-metastore:9083).
+  # This gives it a persistent, shared catalog so that:
+  #   - table definitions survive container restarts
+  #   - dbt can use `table` materialisation (writes physical Parquet to HDFS)
+  #   - Silver and Gold are real HDFS layers, not just in-memory view chains
+  #
+  # Start docker-compose-hive.yml BEFORE this compose file.
   spark-thriftserver:
     image: bde2020/spark-master:3.3.0-hadoop3.3
     container_name: spark-thriftserver
@@ -54,14 +60,18 @@ services:
     entrypoint: ["/bin/bash", "-c"]
     command:
       - |
-        sleep 15
+        echo "Waiting for Hive Metastore on hive-metastore:9083..."
+        until nc -z hive-metastore 9083; do sleep 3; done
+        echo "Hive Metastore is ready. Starting ThriftServer..."
         /spark/bin/spark-submit \
           --class org.apache.spark.sql.hive.thriftserver.HiveThriftServer2 \
           --master local[2] \
           --conf spark.sql.hive.thriftServer.singleSession=false \
           --conf spark.ui.port=4040 \
-          --conf spark.sql.warehouse.dir=/tmp/spark-warehouse \
           --conf spark.hadoop.fs.defaultFS=hdfs://namenode:9000 \
+          --conf spark.sql.warehouse.dir=hdfs://namenode:9000/user/hive/warehouse \
+          --conf spark.hadoop.fs.hdfs.impl.disable.cache=true \
+          --conf spark.hadoop.hive.metastore.uris=thrift://hive-metastore:9083 \
           --conf spark.sql.legacy.timeParserPolicy=LEGACY
     depends_on:
       - spark-master

@@ -1,0 +1,35 @@
+name: 'olist'
+version: '1.0.0'
+config-version: 2
+
+profile: 'olist_spark'
+
+model-paths: ["models"]
+analysis-paths: ["analyses"]
+test-paths: ["tests"]
+seed-paths: ["seeds"]
+macro-paths: ["macros"]
+snapshot-paths: ["snapshots"]
+
+target-path: "target"
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+# Run before any model: register Bronze external tables + create silver/gold schemas
+on-run-start:
+  - "{{ register_bronze_sources() }}"
+  - "{{ create_schemas() }}"
+
+models:
+  olist:
+    silver:
+      # view: SQL definition stored in HMS to persists across ThriftServer restarts
+      # (table CTAS via Hive write path hangs in local ThriftServer mode;
+      #  a full Spark cluster + external HMS would support table materialisation)
+      +materialized: view
+      +schema: silver
+    gold:
+      +materialized: table
+      +schema: gold
+

@@ -1,0 +1,15 @@
+olist_spark:
+  target: dev
+  outputs:
+    dev:
+      type: spark
+      method: thrift
+      host: "{{ env_var('DBT_THRIFT_HOST', 'localhost') }}"            # ThriftServer port 10000 is mapped to host
+      port: 10000
+      user: root
+      schema: default
+      connect_retries: 5
+      connect_timeout: 60
+      # NOTE: ThriftServer must be running with the external Hive Metastore
+      # (docker-compose-hive.yml) so that `table` materialisation can write
+      # physical Parquet files to HDFS and register them in the persistent catalog.

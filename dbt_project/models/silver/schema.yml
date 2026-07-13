@@ -1,0 +1,62 @@
+version: 2
+
+sources:
+  - name: bronze
+    database: bronze
+    description: "Raw Bronze layer: Parquet files ingested from Olist CSVs via Apache Spark and stored in HDFS."
+    tables:
+      - name: olist_customers_dataset
+        description: "Customer records. PK: customer_id"
+      - name: olist_geolocation_dataset
+        description: "Brazilian ZIP-code geolocation data. No single PK since row-level dedup is required."
+      - name: olist_order_items_dataset
+        description: "Line items per order. PK: (order_id, order_item_id)"
+      - name: olist_order_payments_dataset
+        description: "Payment records per order. PK: (order_id, payment_sequential)"
+      - name: olist_order_reviews_dataset
+        description: "Customer reviews. PK: review_id"
+      - name: olist_orders_dataset
+        description: "Order headers. PK: order_id"
+      - name: olist_products_dataset
+        description: "Product catalogue. PK: product_id"
+      - name: olist_sellers_dataset
+        description: "Seller directory. PK: seller_id"
+      - name: product_category_name_translation
+        description: "Maps Portuguese category names to English. PK: product_category_name"
+
+models:
+  - name: silver_customers
+    description: "Cleaned customer table, no transformation needed, schema preserved from Bronze."
+    columns:
+      - name: customer_id
+        tests: [unique, not_null]
+
+  - name: silver_geolocation
+    description: "Geolocation table with exact row-level duplicates removed."
+
+  - name: silver_orders
+    description: "Orders table with all date strings cast to TIMESTAMP."
+    columns:
+      - name: order_id
+        tests: [unique, not_null]
+
+  - name: silver_order_items
+    description: "Order items with shipping_limit_date cast to TIMESTAMP."
+
+  - name: silver_order_payments
+    description: "Payments table: schema preserved; no extra casting required."
+
+  - name: silver_order_reviews
+    description: "Reviews with review_creation_date and review_answer_timestamp cast to TIMESTAMP."
+
+  - name: silver_products
+    description: "Products joined with English category translation."
+    columns:
+      - name: product_id
+        tests: [unique, not_null]
+
+  - name: silver_sellers
+    description: "Seller directory: schema preserved from Bronze."
+    columns:
+      - name: seller_id
+        tests: [unique, not_null]

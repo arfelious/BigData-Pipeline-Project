@@ -1,0 +1,131 @@
+version: '3.8'
+
+# External Hive Metastore for the Olist Big Data Pipeline
+# =========================================================
+# Provides a persistent, shared Hive Metastore Service (HMS) so that
+# Spark ThriftServer can register and look up tables across restarts.
+#
+# WHY: Without an external HMS, ThriftServer uses an embedded Derby
+# metastore that lives only in memory. Every restart wipes all table
+# definitions. dbt is forced to use `view` materialisation (no HDFS writes).
+#
+# WITH this HMS: tables survive restarts, dbt can materialise Silver and
+# Gold as physical Parquet tables on HDFS, and the full Medallion
+# Architecture is physically real (Bronze / Silver / Gold on HDFS).
+#
+# Services:  hive-metastore-db  : Postgres 9.5 storing Hive catalog metadata
+#            hive-metastore     : HMS Thrift service on port 9083
+#
+# Start order (manual, because these are separate compose files):
+#   1. docker compose -f docker-compose-hdfs.yml up -d
+#   2. docker compose -f docker-compose-hive.yml up -d   ← this file
+#   3. docker compose -f docker-compose-spark.yml up -d  ← ThriftServer will
+#                                                           connect to HMS on :9083
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # Hive Metastore backend database
+  # Stores all table/column/partition metadata as rows in Postgres.
+  # ---------------------------------------------------------------------------
+  hive-metastore-db:
+    image: postgres:9.5-alpine  # postgresql-9.4 JDBC driver inside bde2020/hive
+                                 # queries pg_am.amcanorder, which was removed
+                                 # in Postgres 9.6+. Postgres 9.5 is the latest
+                                 # version that retains this column.
+
+
+    container_name: hive-metastore-db
+    hostname: hive-metastore-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: metastore
+      POSTGRES_USER: hive
+      POSTGRES_PASSWORD: hive
+      POSTGRES_HOST_AUTH_METHOD: md5   # explicitly defined to guarantee consistency even if default changes
+      # scram-sha-256 is not supported by the older PostgreSQL JDBC driver inside bde2020/hive
+    volumes:
+      - hive_metastore_db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hive -d metastore"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - bigdata-net
+
+  # ---------------------------------------------------------------------------
+  # Hive Metastore Service (HMS)
+  # Exposes the Thrift API on port 9083.
+  # Spark ThriftServer connects here via:
+  #   spark.hadoop.hive.metastore.uris = thrift://hive-metastore:9083
+  #
+  # The bde2020/hive image reads HIVE_SITE_CONF_* env vars and writes them
+  # into hive-site.xml at startup via its built-in startup.sh, then runs
+  # schematool -initSchema automatically on first start.
+  # ---------------------------------------------------------------------------
+  hive-metastore:
+    image: bde2020/hive:2.3.2-postgresql-metastore
+    container_name: hive-metastore
+    hostname: hive-metastore
+    restart: unless-stopped
+    ports:
+      - "9083:9083"
+    environment:
+      # entrypoint.sh reads HIVE_SITE_CONF_* and writes them into hive-site.xml
+      HIVE_SITE_CONF_javax_jdo_option_ConnectionURL: "jdbc:postgresql://hive-metastore-db:5432/metastore"
+      HIVE_SITE_CONF_javax_jdo_option_ConnectionDriverName: "org.postgresql.Driver"
+      HIVE_SITE_CONF_javax_jdo_option_ConnectionUserName: "hive"
+      HIVE_SITE_CONF_javax_jdo_option_ConnectionPassword: "hive"
+      HIVE_SITE_CONF_hive_metastore_warehouse_dir: "hdfs://namenode:9000/user/hive/warehouse"
+      CORE_CONF_fs_defaultFS: "hdfs://namenode:9000"
+      # Auto-create is disabled because schema tables are already initialized.
+      # This prevents concurrent threads from trying to add constraints
+      # and causing Postgres relation lock hangs.
+      HIVE_SITE_CONF_datanucleus_schema_autoCreateAll: "false"
+      HIVE_SITE_CONF_datanucleus_autoCreateSchema: "false"
+      HIVE_SITE_CONF_datanucleus_fixedDatastore: "true"
+      # Disable schema version check as datanucleus.autoCreateAll builds the tables
+      # but does not insert the Hive VERSION record that schematool normally writes.
+      # Without this flag the metastore refuses to start with "Version information
+      # not found". Safe to disable in dev; enable and run schematool in production.
+      HIVE_SITE_CONF_hive_metastore_schema_verification: "false"
+
+
+
+
+    # Command as a list: entrypoint.sh execs "$@" so these become the exact
+    # args: hive binary, --service flag, metastore service name
+    # The native /entrypoint.sh must run first to write HIVE_SITE_CONF_* vars into hive-site.xml.
+    # Command is a YAML list to avoid incorrect word-splitting.
+    # We run schematool to initialize all 57+ metadata tables on a single thread.
+    # Once the schema exists, Hive Metastore starts and runs cleanly.
+    volumes:
+      - ./hive_startup.sh:/opt/hive_startup.sh
+    # Command is a single argument with no spaces to prevent $@ word-splitting issues.
+    command:
+      - /opt/hive_startup.sh
+
+
+    depends_on:
+      hive-metastore-db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 9083 || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    networks:
+      - bigdata-net
+
+
+
+
+volumes:
+  hive_metastore_db:
+
+networks:
+  bigdata-net:
+    external: true
+    name: bigdata-net

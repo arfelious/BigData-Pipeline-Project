@@ -22,3 +22,5 @@ Thumbs.db
 *.crc
 _SUCCESS
 
+**/*.log
+**/target

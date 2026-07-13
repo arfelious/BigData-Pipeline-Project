@@ -17,8 +17,7 @@ Env variables (defaults are from docker compose files):
     SUPERSET_PASS       (admin password)                         (default: admin)
     THRIFT_HOST         (ThriftServer host for Superset)         (default: spark-thriftserver)
     THRIFT_PORT         (ThriftServer port)                      (default: 10000)
-    THRIFT_HOST_LOCAL   (ThriftServer host from host OS)         (default: localhost)
-    HDFS_BASE           (HDFS root path)                         (default: hdfs://namenode:9000/olist)
+    HDFS_BASE           (HDFS root path)                         (default: hdfs://namenode:9000/silver)
 """
 
 import os
@@ -81,7 +80,7 @@ def wait_for_superset(timeout = 120):
             if r.status_code == 200:
                 print("Superset is up.")
                 return
-        except requests.exceptions.ConnectionError:
+        except requests.exceptions.RequestException:
             pass
         time.sleep(3)
     print("ERROR: Superset did not become healthy in time.", file=sys.stderr)
@@ -106,7 +105,7 @@ def create_hive_tables(tables_to_register, base_path):
     for table in tables_to_register:
         location = f"{base_path}/{table}"
         drop_ddl = f"DROP TABLE IF EXISTS `{table}`"
-        ddl = f"CREATE TABLE IF NOT EXISTS `{table}` USING PARQUET LOCATION '{location}'"
+        ddl = f"CREATE TABLE `{table}` USING PARQUET LOCATION '{location}'"
         lines.append(f"cur.execute(\"{drop_ddl}\")")
         lines.append(f"cur.execute(\"{ddl}\")")
         lines.append(f"print('  [ok] {table}')")   
@@ -272,7 +271,7 @@ def main():
     # Resolve jobs to run
     jobs = []
     if target in ["silver", "all"]:
-        jobs.append((OLIST_TABLES, "hdfs://namenode:9000/silver"))
+        jobs.append((OLIST_TABLES, HDFS_BASE))
     if target in ["gold", "all"]:
         jobs.append((GOLD_TABLES, "hdfs://namenode:9000/gold"))
 

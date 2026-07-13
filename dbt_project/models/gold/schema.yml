@@ -1,0 +1,44 @@
+version: 2
+
+models:
+  - name: dim_customers
+    description: "Customer dimension: one row per unique customer_id."
+    columns:
+      - name: customer_id
+        tests: [unique, not_null]
+
+  - name: dim_products
+    description: "Product dimension with English category name. One row per product_id."
+    columns:
+      - name: product_id
+        tests: [unique, not_null]
+
+  - name: dim_sellers
+    description: "Seller dimension. One row per seller_id."
+    columns:
+      - name: seller_id
+        tests: [unique, not_null]
+
+  - name: dim_date
+    description: "Date dimension covering the full order date range. One row per calendar day."
+    columns:
+      - name: date_key
+        tests: [unique, not_null]
+
+  - name: fact_orders
+    description: "Order-grain fact table. Contains delivery_time_days pre-calculated metric."
+    columns:
+      - name: order_id
+        tests: [unique, not_null]
+
+  - name: fact_order_items
+    description: "Line-item grain fact table. Joins to dim_products, dim_sellers, dim_customers, dim_date."
+
+  - name: fact_order_payments
+    description: "Payment grain fact table. Joins to dim_date."
+
+  - name: fact_order_reviews
+    description: "Review grain fact table. Links to fact_order_items via order_id for category scoring. NOTE: review_id is not unique in the source data, there are 789 duplicate review_id values in the Olist dataset."
+    columns:
+      - name: review_id
+        tests: [not_null]

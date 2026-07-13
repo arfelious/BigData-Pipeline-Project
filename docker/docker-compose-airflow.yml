@@ -1,0 +1,116 @@
+version: '3.8'
+
+# Apache Airflow for Olist Big Data Pipeline
+# Web UI:    http://localhost:8090
+# Login:     admin / admin
+# DAGs dir:  ../dags  (mounted into all containers)
+
+x-airflow-common: &airflow-common
+  image: apache/airflow:2.9.3
+  environment: &airflow-common-env
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__CORE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-db:5432/airflow
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'false'
+    AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+    AIRFLOW__WEBSERVER__EXPOSE_CONFIG: 'true'
+    # Spark connection details
+    SPARK_MASTER_URL: spark://spark-master:7077
+    SPARK_APP_PATH: /opt/airflow/app
+    DBT_PROJECT_DIR: /opt/airflow/dbt_project
+    DBT_PROFILES_DIR: /opt/airflow/dbt_project
+    DBT_THRIFT_HOST: spark-thriftserver
+    _PIP_ADDITIONAL_REQUIREMENTS: "dbt-core>=1.8,<2.0 dbt-spark[PyHive]>=1.8,<2.0"
+  volumes:
+    - ../dags:/opt/airflow/dags
+    - airflow_logs:/opt/airflow/logs
+    - airflow_plugins:/opt/airflow/plugins
+    - /var/run/docker.sock:/var/run/docker.sock
+    # Mount the project root so Airflow can reach processing/ and dbt_project/
+    - ..:/opt/airflow/app
+    - ../dbt_project:/opt/airflow/dbt_project
+  user: "${AIRFLOW_UID:-50000}:947"
+  depends_on:
+    airflow-db:
+      condition: service_healthy
+  networks:
+    - bigdata-net
+
+services:
+  airflow-db:
+    image: postgres:15-alpine
+    container_name: airflow-db
+    hostname: airflow-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes:
+      - airflow_db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U airflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - bigdata-net
+
+  # Init container (runs DB migrations + creates admin user)
+  airflow-init:
+    <<: *airflow-common
+    container_name: airflow-init
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        airflow db migrate
+        airflow users create \
+          --username admin \
+          --firstname Admin \
+          --lastname User \
+          --role Admin \
+          --email admin@olist.com \
+          --password admin || true
+        echo "Airflow initialised."
+    restart: "no"
+
+  airflow-webserver:
+    <<: *airflow-common
+    container_name: airflow-webserver
+    hostname: airflow-webserver
+    restart: unless-stopped
+    ports:
+      - "8090:8080"
+    command: webserver
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    depends_on:
+      airflow-db:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+
+  airflow-scheduler:
+    <<: *airflow-common
+    container_name: airflow-scheduler
+    hostname: airflow-scheduler
+    restart: unless-stopped
+    command: scheduler
+    depends_on:
+      airflow-db:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+
+volumes:
+  airflow_db:
+  airflow_logs:
+  airflow_plugins:
+
+networks:
+  bigdata-net:
+    external: true
+    name: bigdata-net

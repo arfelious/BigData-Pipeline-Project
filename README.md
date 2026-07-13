@@ -8,6 +8,46 @@ The project is developed in stages. Each stage adds a new layer to the pipeline.
 
 ---
 
+## Automated Startup & Query Execution
+
+Convenient automation scripts have been provided to start up the entire pipeline environment and run the business analytical queries.
+
+**1. Start the Stack (HDFS, Spark, Metastore, Superset, Airflow)**
+
+```bash
+bash scripts/start_all.sh
+```
+
+This script automatically creates the shared network, spins up the docker containers in the correct dependency order, and waits for the Spark ThriftServer to become healthy.
+
+Once finished, the web interfaces are accessible at:
+- **HDFS NameNode** : http://localhost:9870
+- **Spark Master**  : http://localhost:8080
+- **Apache Superset** : http://localhost:8088  (credentials: `admin` / `admin`)
+- **Apache Airflow**  : http://localhost:8090  (credentials: `admin` / `admin`)
+
+**2. Execute the Analytical queries**
+
+To query the built Gold Star Schema on the Spark ThriftServer and answer all the Olist business analytical questions, run:
+
+```bash
+bash scripts/run_queries.sh
+```
+
+**3. Stop the stack**
+
+To stop all running services and clean up resources, run:
+
+```bash
+docker compose -f docker/docker-compose-airflow.yml down
+docker compose -f docker/docker-compose-superset.yml down
+docker compose -f docker/docker-compose-spark.yml down
+docker compose -f docker/docker-compose-hive.yml down
+docker compose -f docker/docker-compose-hdfs.yml down
+```
+
+---
+
 ## 📌 Important Notes
 
 ### Submission
