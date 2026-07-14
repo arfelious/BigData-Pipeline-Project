@@ -15,14 +15,14 @@ def main():
 
     # Dictionary mapping each table to its expected primary/unique key(s)
     tables_to_check = {
-        "olist_customers_dataset": ["customer_id"],
-        "olist_geolocation_dataset": None,  # Check overall row duplicates (no primary key)
-        "olist_order_items_dataset": ["order_id", "order_item_id"],
-        "olist_order_payments_dataset": ["order_id", "payment_sequential"],
-        "olist_order_reviews_dataset": ["review_id"],
-        "olist_orders_dataset": ["order_id"],
-        "olist_products_dataset": ["product_id"],
-        "olist_sellers_dataset": ["seller_id"],
+        "silver_customers": ["customer_id"],
+        "silver_geolocation": None,  # Check overall row duplicates (no primary key)
+        "silver_order_items": ["order_id", "order_item_id"],
+        "silver_order_payments": ["order_id", "payment_sequential"],
+        "silver_order_reviews": ["review_id"],
+        "silver_orders": ["order_id"],
+        "silver_products": ["product_id"],
+        "silver_sellers": ["seller_id"],
         "product_category_name_translation": ["product_category_name"],
     }
 

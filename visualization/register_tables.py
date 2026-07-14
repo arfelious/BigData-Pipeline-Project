@@ -17,7 +17,7 @@ Env variables (defaults are from docker compose files):
     SUPERSET_PASS       (admin password)                         (default: admin)
     THRIFT_HOST         (ThriftServer host for Superset)         (default: spark-thriftserver)
     THRIFT_PORT         (ThriftServer port)                      (default: 10000)
-    HDFS_BASE           (HDFS root path)                         (default: hdfs://namenode:9000/silver)
+    HDFS_BASE           (HDFS root path)                         (default: hdfs://namenode:9000/olist)
 """
 
 import os
@@ -42,7 +42,7 @@ SUPERSET_PASS = os.environ.get("SUPERSET_PASS", "admin")
 THRIFT_HOST        = os.environ.get("THRIFT_HOST",       "spark-thriftserver")
 THRIFT_PORT        = int(os.environ.get("THRIFT_PORT", "10000"))
 
-HDFS_BASE     = os.environ.get("HDFS_BASE",     "hdfs://namenode:9000/silver")
+HDFS_BASE     = os.environ.get("HDFS_BASE",     "hdfs://namenode:9000/olist")
 
 DB_NAME = "Olist Spark (HDFS)"
 
