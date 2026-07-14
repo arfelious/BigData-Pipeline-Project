@@ -13,7 +13,7 @@
 * **Transformations**: PySpark scripts (`transform_silver.py` and `transform_gold.py`) clean and transform the raw data.
   - **Silver (Cleaning)**: Casts dates to `TIMESTAMP`, left-joins English product categories, and deduplicates the geolocation table.
   - **Gold (Star Schema)**: Resolves dimension lookup tables (`dim_customers`, `dim_products`, `dim_sellers`, `dim_date`) and fact tables (`fact_orders`, `fact_order_items`, `fact_order_payments`, `fact_order_reviews`).
-* **Analytical Queries**: Formulates 7 queries to answer business questions (monthly revenue, category trends, top sellers, delivery times, payment types, and review scores).
+* **Analytical Queries**: Formulates 7 queries to answer business questions (monthly revenue, revenue by category, top sellers, delivery times, payment type trends, and review scores).
 
 ### Phase 3: Orchestration & Modeling (dbt & Airflow)
 * **Apache Airflow**: Automates pipeline execution.
